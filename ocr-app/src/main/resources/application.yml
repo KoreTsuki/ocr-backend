@@ -1,0 +1,52 @@
+server:
+  port: 8500
+  servlet:
+    context-path: /api
+spring:
+  config:
+    import: "optional:classpath:secret.properties"
+  application:
+    name: ocr-ddd
+  profiles:
+    active: dev
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+  datasource:
+        druid:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://${db.host}:${db.port}/${db.database}?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true
+          username: ${db.username}
+          password: ${db.password}
+
+  redis:
+    host: ${redis.host}
+    database: ${redis.database}
+    password: ${redis.password}
+    port: ${redis.port}
+    timeout: 5000
+
+logging:
+  level:
+    root: INFO
+  file:
+    path: ./logs
+    name: ocr-ddd.log
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"
+    file: "%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"
+
+minio:
+  endpoint: http://127.0.0.1:9090
+  username: minioadmin
+  password: minioadmin
+  bucket: ocr-bucket
+#ocr:
+#  url: ${ocr.url}
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.lrc.ocr.po
+  configuration:
+    #开启驼峰命名
+    map-underscore-to-camel-case: true
