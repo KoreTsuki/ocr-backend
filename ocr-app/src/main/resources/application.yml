@@ -37,7 +37,7 @@ logging:
     file: "%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"
 
 minio:
-  endpoint: http://127.0.0.1:9090
+  endpoint: http://127.0.0.1:9000
   username: minioadmin
   password: minioadmin
   bucket: ocr-bucket

@@ -38,23 +38,37 @@
 
 ## 🔧 技术栈亮点 :key:
 
-### Java & 中间件
+### Java技术栈
 
-- **Spring生态**：Spring Boot, MVC
-- **网络与数据**：Okhttp, Jackson, Mybatis, MySQL, Redis
-- **API管理与文档**：Knife4j
-- **开发辅助**：Lombok
-- **消息传递**：EventBus（Guava）
-- **分布式锁**：Redission
+| 类别     | 技术/框架      | 用途                             |
+| -------- | -------------- | -------------------------------- |
+| 基础框架 | Spring Boot    | 应用基础框架                     |
+| Web框架  | Spring MVC     | 提供HTTP接口                     |
+| 数据访问 | MyBatis        | ORM框架，操作数据库              |
+| 数据库   | MySQL          | 持久化存储                       |
+| 缓存     | Redis          | 临时存储OCR结果、限流            |
+| 工具库   | OkHttp         | HTTP客户端，调用Python OCR服务   |
+| 工具库   | Jackson        | JSON序列化/反序列化              |
+| 工具库   | Lombok         | 简化Java代码                     |
+| API文档  | Knife4j        | 生成API文档                      |
+| 消息传递 | Guava EventBus | 事件总线，处理订单支付成功等事件 |
+| 分布式锁 | Redission      | 实现并发控制                     |
+| 对象存储 | MinIO          | 存储图片等文件                   |
 
-### Python
+### Python技术栈
 
-- **轻量级Web框架**：Flask
-- **OCR库**：PaddleOCR
+| 类别    | 技术/框架 | 用途                       |
+| ------- | --------- | -------------------------- |
+| Web框架 | Flask     | 轻量级Web框架，提供OCR接口 |
+| OCR库   | PaddleOCR | 核心OCR引擎，实现文字识别  |
+| 工具库  | NumPy     | 处理数组等数据结构         |
+| 工具库  | JSON      | 处理JSON数据               |
 
 ### 前端技术
 
 - **React + Ant Design Pro**：构建现代Web应用
 
 ## 📖 安装部署教程 :book:
+
+
 

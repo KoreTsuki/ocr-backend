@@ -25,6 +25,8 @@ public abstract class OcrService implements IOcrService {
     private OcrStrategyFactory ocrStrategyFactory;
     @Resource
     private IOcrRepository ocrRepository;
+    @Resource
+    private com.lrc.ocr.domain.ocr.service.FileUploadService fileUploadService;
 
     /**
      * 调用策略工厂判断输入的是URL还是文件
@@ -39,6 +41,10 @@ public abstract class OcrService implements IOcrService {
         // 交给Ocr服务处理
         ApiResponseAggregate apiResponseAggregate = doOcrService(input);
         List<ApiDataAggregate> apiDataAggregates = apiResponseAggregate.getData().get(0);
+        
+        // 保存OCR结果到数据库
+        saveOcrResultToDatabase(input, apiDataAggregates);
+        
         // 返回要聚合数据还是文本
         if (isAggregate){
             return apiDataAggregates;
@@ -48,6 +54,40 @@ public abstract class OcrService implements IOcrService {
         // 如果返回是文本，通过什么过滤器去处理
         return filter(textOnlyListByData);
 
+    }
+    
+    /**
+     * 保存OCR结果到数据库
+     * @param input 输入实体
+     * @param apiDataAggregates OCR识别结果
+     */
+    private void saveOcrResultToDatabase(OcrInputEntity input, List<ApiDataAggregate> apiDataAggregates) {
+        try {
+            // 获取当前用户ID
+            String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            Long userId = Long.parseLong(userIdStr);
+            
+            // 获取图片URL
+            String imageUrl = "";
+            if (input instanceof com.lrc.ocr.domain.ocr.model.entity.UrlOcrInputEntity) {
+                imageUrl = ((com.lrc.ocr.domain.ocr.model.entity.UrlOcrInputEntity) input).getUrl();
+            } else if (input instanceof com.lrc.ocr.domain.ocr.model.entity.FileOcrInputEntity) {
+                // 对于文件输入，我们需要获取上传后的URL
+                // 这里通过FileUploadService获取MinIO的URL
+                com.lrc.ocr.domain.ocr.model.entity.FileOcrInputEntity fileInput = (com.lrc.ocr.domain.ocr.model.entity.FileOcrInputEntity) input;
+                imageUrl = fileUploadService.uploadToUrl(fileInput.getFile());
+            }
+            
+            // 将完整的OCR结果转换为JSON字符串
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String textResult = objectMapper.writeValueAsString(apiDataAggregates);
+            
+            // 保存到数据库
+            ocrRepository.saveOcrResult(userId, imageUrl, textResult);
+        } catch (Exception e) {
+            // 保存失败不影响主流程，只记录异常
+            e.printStackTrace();
+        }
     }
 
 

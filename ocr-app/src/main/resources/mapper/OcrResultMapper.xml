@@ -9,11 +9,12 @@
             <result property="userId" column="user_id" jdbcType="BIGINT"/>
             <result property="imageUrl" column="image_url" jdbcType="VARCHAR"/>
             <result property="textResult" column="text_result" jdbcType="VARCHAR"/>
+            <result property="isDelete" column="is_delete" jdbcType="INTEGER"/>
     </resultMap>
 
     <sql id="Base_Column_List">
         id,user_id,image_url,
-        text_result
+        text_result,is_delete
     </sql>
 
     <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
@@ -71,5 +72,22 @@
             image_url =  #{imageUrl,jdbcType=VARCHAR},
             text_result =  #{textResult,jdbcType=VARCHAR}
         where   id = #{id,jdbcType=BIGINT} 
+    </update>
+
+    <select id="selectByUserId" parameterType="java.lang.Long" resultMap="BaseResultMap">
+        select
+        <include refid="Base_Column_List" />
+        from ocr_result
+        where user_id = #{userId,jdbcType=BIGINT}
+        and is_delete = 0
+        order by id desc
+    </select>
+
+    <update id="deleteByIdAndUserId" parameterType="java.util.Map">
+        update ocr_result
+        set is_delete = 1
+        where id = #{id,jdbcType=BIGINT}
+        and user_id = #{userId,jdbcType=BIGINT}
+        and is_delete = 0
     </update>
 </mapper>

@@ -99,6 +99,6 @@ CREATE TABLE `user`  (
 -- ----------------------------
 -- Records of user
 -- ----------------------------
-INSERT INTO `user` VALUES (2, 'oqJEX6BhRAeeh0CbUS1ipURfjdso', 8887);
+INSERT INTO `user` VALUES (2, 'oqJEX6BhRAeeh0CbUS1ipURfjdso','admin', '123456',8887);
 
 SET FOREIGN_KEY_CHECKS = 1;
