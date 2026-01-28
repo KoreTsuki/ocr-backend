@@ -10,7 +10,7 @@
 
 前端则选用了Ant Design Pro，为用户提供流畅的交互体验。
 
-- **前端项目地址**：[[KoreTsuki/ocr-frontend](https://github.com/KoreTsuki/ocr-frontend)](https://github.com/Laurc2004/ocr-frontend) 使用Ant Design Pro构建，为用户带来极致的Web体验。
+- **前端项目地址**：[[ocr-frontend](https://github.com/KoreTsuki/ocr-frontend)] 使用Ant Design Pro构建，为用户带来极致的Web体验。
 
 ## 🔄 调用流程与功能说明 :gear:
 
