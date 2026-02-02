@@ -1,5 +1,6 @@
 package com.lrc.ocr.domain.ocr.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lrc.ocr.domain.ocr.model.aggregate.ApiDataAggregate;
 import com.lrc.ocr.domain.ocr.model.aggregate.ApiResponseAggregate;
 import com.lrc.ocr.domain.ocr.model.entity.*;
@@ -9,104 +10,197 @@ import com.lrc.ocr.domain.ocr.repository.IOcrRepository;
 import com.lrc.ocr.domain.ocr.service.IOcrService;
 import com.lrc.ocr.domain.ocr.service.OcrStrategyFactory;
 import com.lrc.ocr.domain.ocr.service.strategy.OcrStrategy;
+import com.lrc.ocr.utils.FileDuplicateChecker;
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public abstract class OcrService implements IOcrService {
+
     @Resource
     private OcrStrategyFactory ocrStrategyFactory;
     @Resource
     private IOcrRepository ocrRepository;
     @Resource
     private com.lrc.ocr.domain.ocr.service.FileUploadService fileUploadService;
+    @Resource
+    private FileDuplicateChecker fileDuplicateChecker;
+    @Resource
+    private RedissonClient redissonClient; // 引入 Redisson
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * 调用策略工厂判断输入的是URL还是文件
-     * @param input
-     * @param isAggregate
-     * @return
+     * OCR 处理主流程
+     * 1. 分布式锁限流
+     * 2. 检查重复
+     * 3. 扣减额度 (DB操作)
+     * 4. 执行OCR (耗时网络操作)
+     * 5. 保存结果 (DB操作)
      */
-    @Transactional
-    public List<?> processOcrAndFilter(OcrInputEntity input, boolean isAggregate){
-        // 校验额度
-        checkLines();
-        // 交给Ocr服务处理
-        ApiResponseAggregate apiResponseAggregate = doOcrService(input);
-        List<ApiDataAggregate> apiDataAggregates = apiResponseAggregate.getData().get(0);
-        // 保存OCR结果到数据库
-        saveOcrResultToDatabase(input, apiResponseAggregate);
-        
-        // 返回要聚合数据还是文本
-        if (isAggregate){
-            return apiDataAggregates;
+    public List<?> processOcrAndFilter(OcrInputEntity input, boolean isAggregate) {
+        // 1. 获取当前用户ID
+        String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Long userId = Long.parseLong(userIdStr);
+
+        // 2. 定义分布式锁 Key (粒度：用户级)
+        String lockKey = "lock:ocr:user:" + userId;
+        RLock lock = redissonClient.getLock(lockKey);
+
+        boolean isLocked = false;
+        try {
+            // 尝试获取锁：等待0秒(立即失败)，锁定30秒(防止死锁)
+            // 如果用户狂点按钮，第二个请求会在这里直接被拒绝，不会打到数据库和OCR服务
+            isLocked = lock.tryLock(0, 30, TimeUnit.SECONDS);
+
+            if (!isLocked) {
+                throw new OcrServiceException(OcrErrorVO.SYSTEM_ERROR.getCode(), "任务处理中，请勿频繁点击");
+            }
+
+            // === 业务逻辑开始 ===
+
+            // A. 检查输入是否重复 (Redis)
+            checkInputDuplicate(input);
+
+            // B. 校验并扣除额度 (DB事务)
+            // 注意：这里去掉了外层的 @Transactional，防止 OCR 耗时操作占用数据库连接
+            deductUserQuota(userId);
+
+            // C. 预处理文件上传 (如果需要) -> 提前获取 URL
+            String storageUrl = prepareStorageUrl(input);
+
+            // D. 执行 OCR 服务 (最耗时操作，不应在数据库事务中)
+            ApiResponseAggregate apiResponseAggregate = doOcrService(input);
+            List<ApiDataAggregate> apiDataAggregates = apiResponseAggregate.getData().get(0);
+
+            // E. 保存 OCR 结果到数据库 (DB事务)
+            saveOcrResultToDatabase(userId, input, storageUrl, apiResponseAggregate);
+
+            // F. 返回结果
+            if (isAggregate) {
+                return apiDataAggregates;
+            }
+            List<String> textOnlyListByData = getTextOnlyListByData(apiDataAggregates);
+            return filter(textOnlyListByData);
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new OcrServiceException(OcrErrorVO.SYSTEM_ERROR);
+        } catch (OcrServiceException e) {
+            throw e; // 业务异常直接抛出
+        } catch (Exception e) {
+            log.error("OCR process failed for user: {}", userId, e);
+            throw new OcrServiceException(OcrErrorVO.SYSTEM_ERROR);
+        } finally {
+            // 3. 释放锁
+            if (isLocked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    /**
+     * 检查输入是否重复
+     */
+    private void checkInputDuplicate(OcrInputEntity input) {
+        if (input instanceof UrlOcrInputEntity) {
+            String url = ((UrlOcrInputEntity) input).getUrl();
+            if (fileDuplicateChecker.isUrlDuplicate(url)) {
+                throw new OcrServiceException(OcrErrorVO.URL_ERROR.getCode(), "URL已提交，请不要重复提交");
+            }
+        }
+        // 文件重复检查通常在 Controller 层或 FileUploadService 内部处理了
+    }
+
+    /**
+     * 扣减用户额度 (独立事务)
+     * 将事务范围缩小到仅此方法，避免长事务
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void deductUserQuota(Long userId) {
+        // 使用 select for update 或乐观锁更好，但有了 Redisson 外部锁，这里普通的 update 也安全
+        UserEntity userEntity = ocrRepository.getById(userId);
+
+        if (userEntity == null || userEntity.getLines() <= 0) {
+            throw new OcrServiceException(OcrErrorVO.USER_LINE_ERROR);
         }
 
-        List<String> textOnlyListByData = getTextOnlyListByData(apiDataAggregates);
-        // 如果返回是文本，通过什么过滤器去处理
-        return filter(textOnlyListByData);
-
+        // 扣减
+        UserEntity updateEntity = userEntity.setLines(userEntity.getLines() - 1);
+        ocrRepository.updateById(updateEntity);
     }
-    
+
     /**
-     * 保存OCR结果到数据库
-     * @param input 输入实体
-     * @param apiResponseAggregate OCR响应结果
+     * 准备存储 URL (上传文件或直接使用 URL)
      */
-    private void saveOcrResultToDatabase(OcrInputEntity input, ApiResponseAggregate apiResponseAggregate) {
+    private String prepareStorageUrl(OcrInputEntity input) {
+        if (input instanceof UrlOcrInputEntity) {
+            return ((UrlOcrInputEntity) input).getUrl();
+        } else if (input instanceof FileOcrInputEntity) {
+            MultipartFile file = ((FileOcrInputEntity) input).getFile();
+            // 上传到 MinIO / OSS
+            return fileUploadService.uploadToUrl(file);
+        }
+        return "";
+    }
+
+    /**
+     * 保存结果 (独立事务)
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveOcrResultToDatabase(Long userId, OcrInputEntity input, String imageUrl, ApiResponseAggregate apiResponseAggregate) {
         try {
-            // 获取当前用户ID
-            String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-            Long userId = Long.parseLong(userIdStr);
-            
-            // 获取图片URL
-            String imageUrl = "";
             boolean isPdf = false;
-            
+
+            // 判断是否为 PDF
             if (input instanceof UrlOcrInputEntity) {
-                imageUrl = ((UrlOcrInputEntity) input).getUrl();
-                // 检测是否为PDF URL
                 isPdf = imageUrl.toLowerCase().endsWith(".pdf");
             } else if (input instanceof FileOcrInputEntity) {
-                // 对于文件输入，我们需要获取上传后的URL
-                // 这里通过FileUploadService获取MinIO的URL
-                FileOcrInputEntity fileInput = (com.lrc.ocr.domain.ocr.model.entity.FileOcrInputEntity) input;
-                imageUrl = fileUploadService.uploadToUrl(fileInput.getFile());
-                // 检测是否为PDF文件
-                isPdf = fileInput.getFile().getContentType().equals("application/pdf") || 
-                        fileInput.getFile().getOriginalFilename().toLowerCase().endsWith(".pdf");
+                MultipartFile file = ((FileOcrInputEntity) input).getFile();
+                isPdf = file.getContentType() != null && file.getContentType().equals("application/pdf")
+                        || file.getOriginalFilename() != null && file.getOriginalFilename().toLowerCase().endsWith(".pdf");
             }
-            
+
             String textResult;
             if (isPdf) {
+                // PDF 处理逻辑：合并所有页面的文本
                 List<List<ApiDataAggregate>> datas = apiResponseAggregate.getData();
-                // 如果是PDF，提取所有页面的文本并合并
                 StringBuilder mergedText = new StringBuilder();
-                for (List<ApiDataAggregate> data : datas) {
-                    for (ApiDataAggregate aggregate : data) {
-                        if (aggregate.getOcrText() != null) {
-                            mergedText.append(aggregate.getOcrText().getText()).append("\n");
+                if (datas != null) {
+                    for (List<ApiDataAggregate> data : datas) {
+                        for (ApiDataAggregate aggregate : data) {
+                            if (aggregate.getOcrText() != null) {
+                                mergedText.append(aggregate.getOcrText().getText()).append("\n");
+                            }
                         }
                     }
                 }
                 textResult = mergedText.toString().trim();
             } else {
-                // 如果不是PDF，保持原有逻辑，将结果转换为JSON字符串
-                List<ApiDataAggregate> apiDataAggregates = apiResponseAggregate.getData().get(0);
-                com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                textResult = objectMapper.writeValueAsString(apiDataAggregates);
+                // 图片处理逻辑：JSON 序列化
+                if (apiResponseAggregate.getData() != null && !apiResponseAggregate.getData().isEmpty()) {
+                    List<ApiDataAggregate> apiDataAggregates = apiResponseAggregate.getData().get(0);
+                    textResult = objectMapper.writeValueAsString(apiDataAggregates);
+                } else {
+                    textResult = "";
+                }
             }
-            
-            // 保存到数据库
+
             ocrRepository.saveOcrResult(userId, imageUrl, textResult);
         } catch (Exception e) {
-            // 保存失败不影响主流程，只记录异常
-            e.printStackTrace();
+            // 记录日志，但不阻断流程（因为钱已经扣了，OCR也跑了，保存记录失败不应该抛给用户错误）
+            log.error("Failed to save OCR history to DB. User: {}, Url: {}", userId, imageUrl, e);
         }
     }
 
@@ -134,8 +228,7 @@ public abstract class OcrService implements IOcrService {
      */
     private ApiResponseAggregate doOcrService(OcrInputEntity input){
         OcrStrategy strategy = ocrStrategyFactory.createStrategy(input);
-        ApiResponseAggregate apiResponseAggregate = strategy.process(input);
-        return apiResponseAggregate;
+        return strategy.process(input);
     }
 
     /**

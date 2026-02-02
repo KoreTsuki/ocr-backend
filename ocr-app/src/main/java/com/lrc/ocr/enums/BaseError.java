@@ -18,7 +18,8 @@ public enum BaseError {
     PARAM_ERROR(501, "参数有误"),
     SERVICE_BUSY_ERROR(502, "服务繁忙，请稍等"),
     UNKNOWN_ERROR(404,"未知SQL异常"),
-    SQL_ERROR(405,"SQL异常，信息为:");
+    SQL_ERROR(405,"SQL异常，信息为:"),
+    SYSTEM_ERROR(406,"系统异常"),;
     private final Integer code; //编码：200成功，其它数字为失败
     private final String msg; //错误信息
 
