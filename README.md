@@ -23,7 +23,7 @@
 
 - **截图预览**：
 
-![image](https://github.com/Laurc2004/ocr-ddd/assets/119660750/4b65ddd4-9aae-4f26-a35f-19897c32ec19)
+  ![eg](eg.png)
 
 - **测试图片**：[示例图片](https://img0.pcauto.com.cn/pcauto/1812/25/14171817_paizhao.jpg)
 
