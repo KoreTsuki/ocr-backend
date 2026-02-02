@@ -2,9 +2,7 @@ package com.lrc.ocr.domain.ocr.service.impl;
 
 import com.lrc.ocr.domain.ocr.model.aggregate.ApiDataAggregate;
 import com.lrc.ocr.domain.ocr.model.aggregate.ApiResponseAggregate;
-import com.lrc.ocr.domain.ocr.model.entity.OcrInputEntity;
-import com.lrc.ocr.domain.ocr.model.entity.OcrTextEntity;
-import com.lrc.ocr.domain.ocr.model.entity.UserEntity;
+import com.lrc.ocr.domain.ocr.model.entity.*;
 import com.lrc.ocr.domain.ocr.model.exception.OcrServiceException;
 import com.lrc.ocr.domain.ocr.model.valobj.OcrErrorVO;
 import com.lrc.ocr.domain.ocr.repository.IOcrRepository;
@@ -41,9 +39,8 @@ public abstract class OcrService implements IOcrService {
         // 交给Ocr服务处理
         ApiResponseAggregate apiResponseAggregate = doOcrService(input);
         List<ApiDataAggregate> apiDataAggregates = apiResponseAggregate.getData().get(0);
-        
         // 保存OCR结果到数据库
-        saveOcrResultToDatabase(input, apiDataAggregates);
+        saveOcrResultToDatabase(input, apiResponseAggregate);
         
         // 返回要聚合数据还是文本
         if (isAggregate){
@@ -59,9 +56,9 @@ public abstract class OcrService implements IOcrService {
     /**
      * 保存OCR结果到数据库
      * @param input 输入实体
-     * @param apiDataAggregates OCR识别结果
+     * @param apiResponseAggregate OCR响应结果
      */
-    private void saveOcrResultToDatabase(OcrInputEntity input, List<ApiDataAggregate> apiDataAggregates) {
+    private void saveOcrResultToDatabase(OcrInputEntity input, ApiResponseAggregate apiResponseAggregate) {
         try {
             // 获取当前用户ID
             String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -69,18 +66,41 @@ public abstract class OcrService implements IOcrService {
             
             // 获取图片URL
             String imageUrl = "";
-            if (input instanceof com.lrc.ocr.domain.ocr.model.entity.UrlOcrInputEntity) {
-                imageUrl = ((com.lrc.ocr.domain.ocr.model.entity.UrlOcrInputEntity) input).getUrl();
-            } else if (input instanceof com.lrc.ocr.domain.ocr.model.entity.FileOcrInputEntity) {
+            boolean isPdf = false;
+            
+            if (input instanceof UrlOcrInputEntity) {
+                imageUrl = ((UrlOcrInputEntity) input).getUrl();
+                // 检测是否为PDF URL
+                isPdf = imageUrl.toLowerCase().endsWith(".pdf");
+            } else if (input instanceof FileOcrInputEntity) {
                 // 对于文件输入，我们需要获取上传后的URL
                 // 这里通过FileUploadService获取MinIO的URL
-                com.lrc.ocr.domain.ocr.model.entity.FileOcrInputEntity fileInput = (com.lrc.ocr.domain.ocr.model.entity.FileOcrInputEntity) input;
+                FileOcrInputEntity fileInput = (com.lrc.ocr.domain.ocr.model.entity.FileOcrInputEntity) input;
                 imageUrl = fileUploadService.uploadToUrl(fileInput.getFile());
+                // 检测是否为PDF文件
+                isPdf = fileInput.getFile().getContentType().equals("application/pdf") || 
+                        fileInput.getFile().getOriginalFilename().toLowerCase().endsWith(".pdf");
             }
             
-            // 将完整的OCR结果转换为JSON字符串
-            com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            String textResult = objectMapper.writeValueAsString(apiDataAggregates);
+            String textResult;
+            if (isPdf) {
+                List<List<ApiDataAggregate>> datas = apiResponseAggregate.getData();
+                // 如果是PDF，提取所有页面的文本并合并
+                StringBuilder mergedText = new StringBuilder();
+                for (List<ApiDataAggregate> data : datas) {
+                    for (ApiDataAggregate aggregate : data) {
+                        if (aggregate.getOcrText() != null) {
+                            mergedText.append(aggregate.getOcrText().getText()).append("\n");
+                        }
+                    }
+                }
+                textResult = mergedText.toString().trim();
+            } else {
+                // 如果不是PDF，保持原有逻辑，将结果转换为JSON字符串
+                List<ApiDataAggregate> apiDataAggregates = apiResponseAggregate.getData().get(0);
+                com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                textResult = objectMapper.writeValueAsString(apiDataAggregates);
+            }
             
             // 保存到数据库
             ocrRepository.saveOcrResult(userId, imageUrl, textResult);

@@ -40,7 +40,8 @@ public class FileUploadService {
         if (file == null || file.isEmpty()) {
             throw new ServiceException(IMAGE_ERROR);
         }
-        if (!Objects.requireNonNull(file.getContentType()).startsWith("image/")) {
+        String contentType = Objects.requireNonNull(file.getContentType());
+        if (!contentType.startsWith("image/") && !contentType.equals("application/pdf")) {
             throw new ServiceException(FILE_ERROR);
         }
         // 采用唯一名称

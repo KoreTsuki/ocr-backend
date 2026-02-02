@@ -9,7 +9,6 @@ import lombok.AllArgsConstructor;
 public enum OcrErrorVO  {
 
     IMAGE_ERROR(100,"图片错误"),
-
     FILE_ERROR(102,"文件格式有误"),
     STRATEGY_ERROR(0,"策略异常"),
     SQL_ERROR(103,"SQL异常"),

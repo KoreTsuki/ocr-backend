@@ -39,7 +39,6 @@ public class OrderServiceImpl extends OrderService {
 
     @Override
     protected PayOrderEntity payOrder(String userId, String orderId, String productName, BigDecimal amountTotal) {
-        // 移除微信支付相关代码，直接返回支付成功状态
         PayOrderEntity payOrderEntity = new PayOrderEntity()
                 .setOpenid(userId)
                 .setOrderId(orderId)
