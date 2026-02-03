@@ -7,6 +7,7 @@ import com.lrc.ocr.domain.ocr.model.entity.*;
 import com.lrc.ocr.domain.ocr.model.exception.OcrServiceException;
 import com.lrc.ocr.domain.ocr.model.valobj.OcrErrorVO;
 import com.lrc.ocr.domain.ocr.repository.IOcrRepository;
+import com.lrc.ocr.domain.ocr.service.FileUploadService;
 import com.lrc.ocr.domain.ocr.service.IOcrService;
 import com.lrc.ocr.domain.ocr.service.OcrStrategyFactory;
 import com.lrc.ocr.domain.ocr.service.strategy.OcrStrategy;
@@ -33,11 +34,11 @@ public abstract class OcrService implements IOcrService {
     @Resource
     private IOcrRepository ocrRepository;
     @Resource
-    private com.lrc.ocr.domain.ocr.service.FileUploadService fileUploadService;
+    private FileUploadService fileUploadService;
     @Resource
     private FileDuplicateChecker fileDuplicateChecker;
     @Resource
-    private RedissonClient redissonClient; // 引入 Redisson
+    private RedissonClient redissonClient;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -46,13 +47,44 @@ public abstract class OcrService implements IOcrService {
      * 1. 分布式锁限流
      * 2. 检查重复
      * 3. 扣减额度 (DB操作)
-     * 4. 执行OCR (耗时网络操作)
+     * 4. 执行OCR 
      * 5. 保存结果 (DB操作)
      */
     public List<?> processOcrAndFilter(OcrInputEntity input, boolean isAggregate) {
         // 1. 获取当前用户ID
-        String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        Long userId = Long.parseLong(userIdStr);
+        Long userId = null;
+        String userIdStr = null;
+        boolean isAsyncTask = false;
+        org.springframework.security.core.Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        
+        // 检查认证信息是否存在
+        if (authentication != null && authentication.getPrincipal() != null) {
+            userIdStr = authentication.getPrincipal().toString();
+            try {
+                userId = Long.parseLong(userIdStr);
+            } catch (NumberFormatException e) {
+                log.warn("Invalid user ID format: {}", userIdStr);
+            }
+        } else {
+            log.warn("No authentication information available - treating as async task");
+            // 对于异步任务，使用默认用户ID
+            userId = 1L;
+            userIdStr = "1";
+            isAsyncTask = true;
+        }
+        
+        return processOcrAndFilter(input, isAggregate, userId, isAsyncTask);
+    }
+    
+    /**
+     * OCR 处理主流程
+     * 1. 分布式锁限流
+     * 2. 检查重复
+     * 3. 扣减额度 (DB操作)
+     * 4. 执行OCR 
+     * 5. 保存结果 (DB操作)
+     */
+    public List<?> processOcrAndFilter(OcrInputEntity input, boolean isAggregate, Long userId, boolean isAsyncTask) {
 
         // 2. 定义分布式锁 Key (粒度：用户级)
         String lockKey = "lock:ocr:user:" + userId;
@@ -60,22 +92,34 @@ public abstract class OcrService implements IOcrService {
 
         boolean isLocked = false;
         try {
-            // 尝试获取锁：等待0秒(立即失败)，锁定30秒(防止死锁)
-            // 如果用户狂点按钮，第二个请求会在这里直接被拒绝，不会打到数据库和OCR服务
-            isLocked = lock.tryLock(0, 30, TimeUnit.SECONDS);
+            // 对于异步任务，跳过分布式锁检查
+            if (!isAsyncTask) {
+                // 尝试获取锁：等待0秒(立即失败)，锁定30秒(防止死锁)
+                // 如果用户狂点按钮，第二个请求会在这里直接被拒绝，不会打到数据库和OCR服务
+                isLocked = lock.tryLock(0, 30, TimeUnit.SECONDS);
 
-            if (!isLocked) {
-                throw new OcrServiceException(OcrErrorVO.SYSTEM_ERROR.getCode(), "任务处理中，请勿频繁点击");
+                if (!isLocked) {
+                    throw new OcrServiceException(OcrErrorVO.SYSTEM_ERROR.getCode(), "任务处理中，请勿频繁点击");
+                }
             }
 
             // === 业务逻辑开始 ===
 
             // A. 检查输入是否重复 (Redis)
-            checkInputDuplicate(input);
+            checkInputDuplicate(input, isAsyncTask);
 
             // B. 校验并扣除额度 (DB事务)
             // 注意：这里去掉了外层的 @Transactional，防止 OCR 耗时操作占用数据库连接
-            deductUserQuota(userId);
+            if (userId != null && !isAsyncTask) {
+                try {
+                    deductUserQuota(userId);
+                } catch (Exception e) {
+                    log.warn("Failed to deduct user quota: {}", e.getMessage());
+                    // 对于异步任务，跳过额度扣减失败的处理
+                }
+            } else {
+                log.warn("Skipping quota deduction for async task");
+            }
 
             // C. 预处理文件上传 (如果需要) -> 提前获取 URL
             String storageUrl = prepareStorageUrl(input);
@@ -85,7 +129,16 @@ public abstract class OcrService implements IOcrService {
             List<ApiDataAggregate> apiDataAggregates = apiResponseAggregate.getData().get(0);
 
             // E. 保存 OCR 结果到数据库 (DB事务)
-            saveOcrResultToDatabase(userId, input, storageUrl, apiResponseAggregate);
+            if (userId != null) {
+                try {
+                    saveOcrResultToDatabase(userId, input, storageUrl, apiResponseAggregate);
+                } catch (Exception e) {
+                    log.warn("Failed to save OCR result: {}", e.getMessage());
+                    // 对于异步任务，跳过结果保存失败的处理
+                }
+            } else {
+                log.warn("Skipping result saving due to missing user ID");
+            }
 
             // F. 返回结果
             if (isAggregate) {
@@ -113,7 +166,13 @@ public abstract class OcrService implements IOcrService {
     /**
      * 检查输入是否重复
      */
-    private void checkInputDuplicate(OcrInputEntity input) {
+    private void checkInputDuplicate(OcrInputEntity input, boolean isAsyncTask) {
+        // 对于异步任务，跳过重复检查
+        if (isAsyncTask) {
+            log.warn("Skipping duplicate check for async task");
+            return;
+        }
+        
         if (input instanceof UrlOcrInputEntity) {
             String url = ((UrlOcrInputEntity) input).getUrl();
             if (fileDuplicateChecker.isUrlDuplicate(url)) {
@@ -149,14 +208,14 @@ public abstract class OcrService implements IOcrService {
             return ((UrlOcrInputEntity) input).getUrl();
         } else if (input instanceof FileOcrInputEntity) {
             MultipartFile file = ((FileOcrInputEntity) input).getFile();
-            // 上传到 MinIO / OSS
+            // 上传到 MinIO
             return fileUploadService.uploadToUrl(file);
         }
         return "";
     }
 
     /**
-     * 保存结果 (独立事务)
+     * 保存结果
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveOcrResultToDatabase(Long userId, OcrInputEntity input, String imageUrl, ApiResponseAggregate apiResponseAggregate) {

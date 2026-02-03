@@ -8,20 +8,19 @@ import com.lrc.ocr.domain.ocr.service.IOcrService;
 import com.lrc.ocr.handle.UserSentinelResourceHandler;
 import com.lrc.ocr.model.Result;
 import com.lrc.ocr.po.OcrResult;
+import com.lrc.ocr.po.OcrTask;
+import com.lrc.ocr.service.TaskService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestPart;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Api(tags = "ocr请求接口")
 @RestController
@@ -29,40 +28,127 @@ import java.util.List;
 public class OcrController {
 
     @Resource
-    private FilterStrategyFactory filterStrategyFactory;
-    @Resource
     private IOcrRepository ocrRepository;
-
+    @Resource
+    private TaskService taskService;
+    @Resource
+    private com.lrc.ocr.domain.ocr.service.FileUploadService fileUploadService;
 
     /**
-     *
+     * 上传单个文件获取任务ID
      * @param file 文件
-     * @param isAggregate 聚合对象还是纯文本
-     * @return List<聚合对象或纯文本>
+     * @return 任务ID
      */
-    @ApiOperation("上传文件获取结果")
-    @PostMapping("/getByFile")
-    public Result<List<?>> getTextOnlyByFile(@RequestPart("file") MultipartFile file, boolean isAggregate, String filterType){
-        OcrInputEntity fromFile = OcrInputFactory.createFromFile(file);
-        IOcrService ocrService = filterStrategyFactory.createFilterStrategy(filterType);
-        List<?> list = ocrService.processOcrAndFilter(fromFile, isAggregate);
-        return Result.success(list);
+    @ApiOperation("上传文件获取任务ID")
+    @PostMapping("/uploadFile")
+    public Result<Map<String, Object>> uploadFile(@RequestPart("file") MultipartFile file){
+        try {
+            // 获取当前用户ID
+            Long userId = null;
+            String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            userId = Long.parseLong(userIdStr);
+
+            // 上传文件到MinIO获取URL
+            String fileUrl = fileUploadService.uploadToUrl(file);
+
+            // 创建任务
+            String taskId = taskService.createTask(userId, file.getOriginalFilename(), fileUrl);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("taskId", taskId);
+            result.put("fileName", file.getOriginalFilename());
+            result.put("queuePosition", taskService.getQueueLength());
+
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error("文件上传失败: " + e.getMessage());
+        }
     }
 
+    /**
+     * 上传多个文件获取任务ID列表
+     * @param files 文件列表
+     * @return 任务ID列表
+     */
+    @ApiOperation("批量上传文件获取任务ID列表")
+    @PostMapping("/uploadFiles")
+    public Result<List<Map<String, Object>>> uploadFiles(@RequestPart("files") MultipartFile[] files){
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        // 获取当前用户ID
+        Long userId = null;
+        String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        userId = Long.parseLong(userIdStr);
+
+        for (MultipartFile file : files) {
+            try {
+                // 上传文件到MinIO获取URL
+                String fileUrl = fileUploadService.uploadToUrl(file);
+
+                // 创建任务
+                String taskId = taskService.createTask(userId, file.getOriginalFilename(), fileUrl);
+
+                Map<String, Object> result = new HashMap<>();
+                result.put("taskId", taskId);
+                result.put("fileName", file.getOriginalFilename());
+                result.put("queuePosition", taskService.getQueueLength());
+
+                results.add(result);
+            } catch (Exception e) {
+                Map<String, Object> errorResult = new HashMap<>();
+                errorResult.put("fileName", file.getOriginalFilename());
+                errorResult.put("error", "文件上传失败: " + e.getMessage());
+                results.add(errorResult);
+            }
+        }
+
+        return Result.success(results);
+    }
 
     /**
-     *
-     * @param url 图片链接
-     * @param isAggregate 聚合对象还是纯文本
-     * @return List<聚合对象或纯文本>
+     * 查询任务状态
+     * @param taskId 任务ID
+     * @return 任务信息
      */
-    @ApiOperation("通过url获取结果")
-    @PostMapping("/getTotalByUrl")
-    public Result<List<?>> getTotalByUrl(String url, boolean isAggregate, String filterType){
-        OcrInputEntity fromUrl = OcrInputFactory.createFromUrl(url);
-        IOcrService ocrService = filterStrategyFactory.createFilterStrategy(filterType);
-        List<?> list = ocrService.processOcrAndFilter(fromUrl, isAggregate);
-        return Result.success(list);
+    @ApiOperation("查询任务状态")
+    @GetMapping("/task/status/{taskId}")
+    public Result<OcrTask> getTaskStatus(@PathVariable("taskId") String taskId){
+        OcrTask task = taskService.getTaskInfo(taskId);
+        if (task == null) {
+            return Result.error("任务不存在");
+        }
+        return Result.success(task);
+    }
+
+    /**
+     * 通过URL创建OCR任务
+     * @param url 图片链接
+     * @return 任务ID
+     */
+    @ApiOperation("通过URL创建OCR任务")
+    @PostMapping("/createTaskByUrl")
+    public Result<Map<String, Object>> createTaskByUrl(String url){
+        try {
+            // 获取当前用户ID
+            Long userId = null;
+            String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            userId = Long.parseLong(userIdStr);
+
+            // 验证URL
+            OcrInputEntity fromUrl = OcrInputFactory.createFromUrl(url);
+
+            // 创建任务
+            String taskId = taskService.createTask(userId, "url_image", url);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("taskId", taskId);
+            result.put("fileName", "url_image");
+            result.put("queuePosition", taskService.getQueueLength());
+
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error("创建任务失败: " + e.getMessage());
+        }
     }
 
     /**

@@ -23,6 +23,9 @@ public class OcrRepository implements IOcrRepository {
     @Override
     public UserEntity getById(Long id) {
         User user = userMapper.getById(id);
+        if (user == null) {
+            return null;
+        }
         return new UserEntity(user.getId(), user.getOpenid(), user.getLines());
     }
 
