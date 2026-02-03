@@ -133,7 +133,7 @@ pip install flask numpy pdf2image requests opencv-contrib-python
 
    ocr.url 默认为 **http://127.0.0.1:8888/ocr/**
 
-## 3. 运行项目
+### 3. 运行项目
 
 #### Python部分
 
