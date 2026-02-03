@@ -69,5 +69,130 @@
 
 ## 📖 安装部署教程 :book:
 
+欢迎来到本项目的安装和运行教程！本教程将引导您完成项目的安装、配置和运行过程。请确保您已满足以下前提条件：
+
+- 确保您的计算机上已安装 Python 3.8以上
+- 确保您已安装 Git
+- 确保您的 jdk 为1.8
+- 确保您有idea、vscode等开发环境
+
+### 1. 克隆项目
+
+1. 打开命令行工具（如 Terminal 或 Command Prompt）。
+2. 输入以下命令以克隆本项目到本地仓库：
+
+```
+git clone https://github.com/KoreTsuki/ocr-backend.git
+```
+
+### 2. 安装依赖
+
+#### Python部分
+
+1. 进入项目目录：
+
+```
+cd python
+```
+
+1. 使用pycharm等开发环境打开 ocr.py
+2. 安装paddlepaddle[安装 - PaddleOCR 文档](https://www.paddleocr.ai/main/version3.x/installation.html)
+
+```
+# CPU 版本
+python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+
+# GPU 版本，需显卡驱动程序版本 ≥450.80.02（Linux）或 ≥452.39（Windows）
+python -m pip install paddlepaddle-gpu==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+
+# GPU 版本，需显卡驱动程序版本 ≥550.54.14（Linux）或 ≥550.54.14（Windows）
+ python -m pip install paddlepaddle-gpu==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+```
+
+3. 安装paddleocr
+
+```
+python -m pip install paddleocr
+```
+
+4. 安装其他依赖
+
+```
+pip install flask numpy pdf2image requests opencv-contrib-python
+```
 
 
+
+#### Java部分
+
+1. 使用idea打开项目，maven进行执行生命周期 install, 等待
+
+2. 找到 **ocr-app/src/main/resources/application.yml**，更换为自己的配置，
+
+   不懂minio推荐 [一小时实践入门MinIO—分布式对象存储服务器（一） - 知乎 (zhihu.com)](https://zhuanlan.zhihu.com/p/654273720)
+
+   ocr.url 默认为 **http://127.0.0.1:8888/ocr/**
+
+## 3. 运行项目
+
+#### Python部分
+
+1. 用命令行中运行主程序：
+
+```
+python ocr.py
+```
+
+默认不更改的话，直接请求的接口即为 http://127.0.0.1:8888/ocr
+
+请求格式为
+
+```
+{
+    "imgUrl":"网络图片url或本机图片路径"
+}
+```
+
+响应示例为
+
+```
+{
+  "code": 200,
+  "data": [
+    [
+      [
+        [
+          [
+            296.0,
+            299.0
+          ],
+          [
+            331.0,
+            298.0
+          ],
+          [
+            346.0,
+            849.0
+          ],
+          [
+            311.0,
+            850.0
+          ]
+        ],
+        [
+          "浙A D0885",
+          0.9767106175422668
+        ]
+      ]
+  ],
+  "message": "调用接口成功"
+}
+```
+
+
+
+#### Java部分
+
+1. 找到启动类**ocr-app/src/main/java/com/lrc/ocr/OcrApplication.java**，并启动
+2. 进入 knife4j ，查看接口 [接口文档](http://localhost:8500/api/doc.html) （该版本暂不支持文件上传测试接口）
+3. Post上传文件请求测试 http://localhost:8500/api/ocr/getToal
