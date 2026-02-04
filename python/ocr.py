@@ -32,7 +32,7 @@ def init_worker():
 
 def parse_ocr_result(raw_result):
     """
-    辅助函数：清洗 PaddleOCR 数据 (保持你原有的逻辑不变)
+    辅助函数：清洗 PaddleOCR 数据
     """
     clean_data = []
     if not raw_result or raw_result[0] is None:

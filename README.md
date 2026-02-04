@@ -25,8 +25,6 @@
 
   ![eg](eg.png)
 
-- **测试图片**：[示例图片](https://img0.pcauto.com.cn/pcauto/1812/25/14171817_paizhao.jpg)
-
 ## 🛠️ 软件架构 :wrench:
 
 遵循DDD原则，项目分为四层：
