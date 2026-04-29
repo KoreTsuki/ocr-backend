@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lrc.ocr.dao.SysOcrTaskMapper">
+
+    <resultMap id="BaseResultMap" type="com.lrc.ocr.po.SysOcrTask">
+        <id property="id" column="id" jdbcType="BIGINT"/>
+        <result property="taskId" column="task_id" jdbcType="VARCHAR"/>
+        <result property="userId" column="user_id" jdbcType="BIGINT"/>
+        <result property="fileName" column="file_name" jdbcType="VARCHAR"/>
+        <result property="fileUrl" column="file_url" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="errorMessage" column="error_message" jdbcType="VARCHAR"/>
+        <result property="createTime" column="create_time" jdbcType="TIMESTAMP"/>
+        <result property="updateTime" column="update_time" jdbcType="TIMESTAMP"/>
+        <result property="startTime" column="start_time" jdbcType="TIMESTAMP"/>
+        <result property="completeTime" column="complete_time" jdbcType="TIMESTAMP"/>
+        <result property="queuePosition" column="queue_position" jdbcType="INTEGER"/>
+        <result property="consumerId" column="consumer_id" jdbcType="VARCHAR"/>
+        <result property="executeDurationMs" column="execute_duration_ms" jdbcType="BIGINT"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.lrc.ocr.po.SysOcrTask" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into sys_ocr_task
+        (task_id, user_id, file_name, file_url, status, error_message, create_time, update_time, start_time, complete_time, queue_position, consumer_id, execute_duration_ms)
+        values
+        (#{taskId}, #{userId}, #{fileName}, #{fileUrl}, #{status}, #{errorMessage}, #{createTime}, #{updateTime}, #{startTime}, #{completeTime}, #{queuePosition}, #{consumerId}, #{executeDurationMs})
+    </insert>
+
+    <update id="updateByTaskId" parameterType="com.lrc.ocr.po.SysOcrTask">
+        update sys_ocr_task
+        <set>
+            <if test="userId != null">user_id = #{userId},</if>
+            <if test="fileName != null">file_name = #{fileName},</if>
+            <if test="fileUrl != null">file_url = #{fileUrl},</if>
+            <if test="status != null">status = #{status},</if>
+            error_message = #{errorMessage},
+            <if test="createTime != null">create_time = #{createTime},</if>
+            update_time = #{updateTime},
+            start_time = #{startTime},
+            complete_time = #{completeTime},
+            queue_position = #{queuePosition},
+            consumer_id = #{consumerId},
+            execute_duration_ms = #{executeDurationMs}
+        </set>
+        where task_id = #{taskId}
+    </update>
+
+    <select id="selectByTaskId" resultMap="BaseResultMap">
+        select id, task_id, user_id, file_name, file_url, status, error_message, create_time, update_time, start_time, complete_time, queue_position, consumer_id, execute_duration_ms
+        from sys_ocr_task
+        where task_id = #{taskId}
+    </select>
+
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        select id, task_id, user_id, file_name, file_url, status, error_message, create_time, update_time, start_time, complete_time, queue_position, consumer_id, execute_duration_ms
+        from sys_ocr_task
+        where user_id = #{userId}
+        order by id desc
+    </select>
+</mapper>

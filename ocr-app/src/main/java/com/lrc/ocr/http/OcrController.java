@@ -3,12 +3,12 @@ package com.lrc.ocr.http;
 import com.lrc.ocr.domain.ocr.model.entity.OcrInputEntity;
 import com.lrc.ocr.domain.ocr.model.entity.factory.OcrInputFactory;
 import com.lrc.ocr.domain.ocr.repository.IOcrRepository;
-import com.lrc.ocr.domain.ocr.service.FilterStrategyFactory;
-import com.lrc.ocr.domain.ocr.service.IOcrService;
-import com.lrc.ocr.handle.UserSentinelResourceHandler;
+import com.lrc.ocr.dto.OcrAuditRequest;
 import com.lrc.ocr.model.Result;
+import com.lrc.ocr.po.OcrAuditLog;
 import com.lrc.ocr.po.OcrResult;
 import com.lrc.ocr.po.OcrTask;
+import com.lrc.ocr.po.SysOcrTask;
 import com.lrc.ocr.service.TaskService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -120,6 +120,12 @@ public class OcrController {
         return Result.success(task);
     }
 
+    @ApiOperation("获取当前用户任务列表")
+    @GetMapping("/task/list")
+    public Result<List<SysOcrTask>> getTaskList() {
+        return Result.success(taskService.getUserTaskList(getCurrentUserId()));
+    }
+
     /**
      * 通过URL创建OCR任务
      * @param url 图片链接
@@ -158,13 +164,38 @@ public class OcrController {
     @ApiOperation("获取当前用户的全部识别结果")
     @GetMapping("/getUserResults")
     public Result<List<OcrResult>> getUserOcrResults(){
-        // 获取当前登录用户的ID
-        String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        Long userId = Long.parseLong(userIdStr);
-        
-        // 获取用户的OCR结果
+        Long userId = getCurrentUserId();
         List<OcrResult> ocrResults = ocrRepository.getUserOcrResults(userId);
         return Result.success(ocrResults);
+    }
+
+    @ApiOperation("人工审核OCR结果")
+    @PostMapping("/audit/{id}")
+    public Result<Boolean> auditOcrResult(@PathVariable("id") Long id, @RequestBody OcrAuditRequest request) {
+        Long userId = getCurrentUserId();
+        if (request == null || request.getAuditText() == null || request.getAuditText().trim().isEmpty()) {
+            return Result.error("审核文本不能为空");
+        }
+        OcrResult current = ocrRepository.getOcrResult(id, userId);
+        if (current == null) {
+            return Result.error("识别结果不存在");
+        }
+
+        String beforeText = current.getAuditText() != null ? current.getAuditText() : current.getTextResult();
+        String afterText = request.getAuditText().trim();
+        Integer auditStatus = beforeText != null && beforeText.trim().equals(afterText) ? 1 : 2;
+
+        boolean updated = ocrRepository.updateAuditResult(id, userId, userId, afterText, auditStatus);
+        if (updated) {
+            ocrRepository.saveAuditLog(id, userId, userId, beforeText, afterText);
+        }
+        return Result.success(updated);
+    }
+
+    @ApiOperation("获取OCR审核日志")
+    @GetMapping("/audit/logs/{id}")
+    public Result<List<OcrAuditLog>> getAuditLogs(@PathVariable("id") Long id) {
+        return Result.success(ocrRepository.getAuditLogs(id, getCurrentUserId()));
     }
 
     /**
@@ -175,14 +206,14 @@ public class OcrController {
     @ApiOperation("根据识别结果ID删除该条识别结果")
     @DeleteMapping("/deleteById/{id}")
     public Result<Boolean> deleteOcrResult(@PathVariable("id") Long id){
-        // 获取当前登录用户的ID
-        String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        Long userId = Long.parseLong(userIdStr);
-        
-        // 删除OCR结果
+        Long userId = getCurrentUserId();
         boolean success = ocrRepository.deleteOcrResult(id, userId);
-        
         return Result.success(success);
+    }
+
+    private Long getCurrentUserId() {
+        String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return Long.parseLong(userIdStr);
     }
 
 }

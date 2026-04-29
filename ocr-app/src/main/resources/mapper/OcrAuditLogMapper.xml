@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lrc.ocr.dao.OcrAuditLogMapper">
+
+    <resultMap id="BaseResultMap" type="com.lrc.ocr.po.OcrAuditLog">
+        <id property="id" column="id" jdbcType="BIGINT"/>
+        <result property="resultId" column="result_id" jdbcType="BIGINT"/>
+        <result property="userId" column="user_id" jdbcType="BIGINT"/>
+        <result property="reviewerId" column="reviewer_id" jdbcType="BIGINT"/>
+        <result property="beforeText" column="before_text" jdbcType="LONGVARCHAR"/>
+        <result property="afterText" column="after_text" jdbcType="LONGVARCHAR"/>
+        <result property="createTime" column="create_time" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.lrc.ocr.po.OcrAuditLog" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into ocr_audit_log
+        (result_id, user_id, reviewer_id, before_text, after_text, create_time)
+        values
+        (#{resultId}, #{userId}, #{reviewerId}, #{beforeText}, #{afterText}, #{createTime})
+    </insert>
+
+    <select id="selectByResultIdAndUserId" resultMap="BaseResultMap">
+        select l.id, l.result_id, l.user_id, l.reviewer_id, l.before_text, l.after_text, l.create_time
+        from ocr_audit_log l
+        inner join ocr_result r on r.id = l.result_id
+        where l.result_id = #{resultId}
+          and r.user_id = #{userId}
+          and r.is_delete = 0
+        order by l.id desc
+    </select>
+</mapper>

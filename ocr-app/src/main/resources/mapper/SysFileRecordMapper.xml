@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lrc.ocr.dao.SysFileRecordMapper">
+
+    <resultMap id="BaseResultMap" type="com.lrc.ocr.po.SysFileRecord">
+        <id property="id" column="id" jdbcType="BIGINT"/>
+        <result property="fileHash" column="file_hash" jdbcType="VARCHAR"/>
+        <result property="fileName" column="file_name" jdbcType="VARCHAR"/>
+        <result property="minioUrl" column="minio_url" jdbcType="VARCHAR"/>
+        <result property="fileSize" column="file_size" jdbcType="BIGINT"/>
+        <result property="contentType" column="content_type" jdbcType="VARCHAR"/>
+        <result property="createTime" column="create_time" jdbcType="TIMESTAMP"/>
+        <result property="updateTime" column="update_time" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <select id="selectByFileHash" resultMap="BaseResultMap">
+        select id, file_hash, file_name, minio_url, file_size, content_type, create_time, update_time
+        from sys_file_record
+        where file_hash = #{fileHash}
+        limit 1
+    </select>
+
+    <insert id="insert" parameterType="com.lrc.ocr.po.SysFileRecord" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into sys_file_record
+        (file_hash, file_name, minio_url, file_size, content_type, create_time, update_time)
+        values
+        (#{fileHash}, #{fileName}, #{minioUrl}, #{fileSize}, #{contentType}, #{createTime}, #{updateTime})
+    </insert>
+</mapper>

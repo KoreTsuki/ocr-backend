@@ -28,6 +28,10 @@ public interface OcrResultMapper {
      */
     List<OcrResult> selectByUserId(@Param("userId") Long userId);
 
+    OcrResult selectByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
+
+    int updateAuditInfo(OcrResult record);
+
     /**
      * 根据ID和用户ID删除OCR识别结果（逻辑删除）
      * @param id 识别结果ID

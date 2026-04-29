@@ -1,14 +1,15 @@
 package com.lrc.ocr.po;
 
 import lombok.Data;
+import lombok.experimental.Accessors;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
-/**
- * ocr任务
- */
 @Data
-public class OcrTask {
+@Accessors(chain = true)
+public class SysOcrTask implements Serializable {
+
     private Long id;
     private String taskId;
     private Long userId;
@@ -23,4 +24,6 @@ public class OcrTask {
     private Integer queuePosition;
     private String consumerId;
     private Long executeDurationMs;
+
+    private static final long serialVersionUID = 1L;
 }

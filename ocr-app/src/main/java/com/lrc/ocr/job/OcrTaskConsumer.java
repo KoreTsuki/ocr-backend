@@ -68,8 +68,9 @@ public class OcrTaskConsumer implements ApplicationRunner {
     private void processTask(String taskId) {
         executorService.submit(() -> {
             try {
+                String consumerId = taskService.buildConsumerId();
                 // 更新任务状态为处理中
-                taskService.updateTaskStatus(taskId, TaskStatus.PROCESSING, null);
+                taskService.updateTaskStatus(taskId, TaskStatus.PROCESSING, null, consumerId);
 
                 // 获取任务信息
                 OcrTask task = taskService.getTaskInfo(taskId);
@@ -89,7 +90,7 @@ public class OcrTaskConsumer implements ApplicationRunner {
                 ocrService.processOcrAndFilter(inputEntity, true, task.getUserId(), true);
 
                 // 更新任务状态为成功
-                taskService.updateTaskStatus(taskId, TaskStatus.SUCCESS, null);
+                taskService.updateTaskStatus(taskId, TaskStatus.SUCCESS, null, consumerId);
             } catch (Exception e) {
                 log.error("处理OCR任务失败: {}", taskId, e);
                 taskService.updateTaskStatus(taskId, TaskStatus.FAILED, e.getMessage());

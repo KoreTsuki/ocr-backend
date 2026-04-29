@@ -8,13 +8,17 @@
             <id property="id" column="id" jdbcType="BIGINT"/>
             <result property="userId" column="user_id" jdbcType="BIGINT"/>
             <result property="imageUrl" column="image_url" jdbcType="VARCHAR"/>
-            <result property="textResult" column="text_result" jdbcType="VARCHAR"/>
+            <result property="textResult" column="text_result" jdbcType="LONGVARCHAR"/>
+            <result property="auditText" column="audit_text" jdbcType="LONGVARCHAR"/>
+            <result property="auditStatus" column="audit_status" jdbcType="INTEGER"/>
+            <result property="reviewerId" column="reviewer_id" jdbcType="BIGINT"/>
+            <result property="auditTime" column="audit_time" jdbcType="TIMESTAMP"/>
             <result property="isDelete" column="is_delete" jdbcType="INTEGER"/>
     </resultMap>
 
     <sql id="Base_Column_List">
         id,user_id,image_url,
-        text_result,is_delete
+        text_result,audit_text,audit_status,reviewer_id,audit_time,is_delete
     </sql>
 
     <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
@@ -31,9 +35,9 @@
     <insert id="insert" keyColumn="id" keyProperty="id" parameterType="com.lrc.ocr.po.OcrResult" useGeneratedKeys="true">
         insert into ocr_result
         ( id,user_id,image_url
-        ,text_result)
+        ,text_result,audit_text,audit_status,reviewer_id,audit_time,is_delete)
         values (#{id,jdbcType=BIGINT},#{userId,jdbcType=BIGINT},#{imageUrl,jdbcType=VARCHAR}
-        ,#{textResult,jdbcType=VARCHAR})
+        ,#{textResult,jdbcType=LONGVARCHAR},#{auditText,jdbcType=LONGVARCHAR},#{auditStatus,jdbcType=INTEGER},#{reviewerId,jdbcType=BIGINT},#{auditTime,jdbcType=TIMESTAMP},#{isDelete,jdbcType=INTEGER})
     </insert>
     <insert id="insertSelective" keyColumn="id" keyProperty="id" parameterType="com.lrc.ocr.po.OcrResult" useGeneratedKeys="true">
         insert into ocr_result
@@ -42,12 +46,22 @@
                 <if test="userId != null">user_id,</if>
                 <if test="imageUrl != null">image_url,</if>
                 <if test="textResult != null">text_result,</if>
+                <if test="auditText != null">audit_text,</if>
+                <if test="auditStatus != null">audit_status,</if>
+                <if test="reviewerId != null">reviewer_id,</if>
+                <if test="auditTime != null">audit_time,</if>
+                <if test="isDelete != null">is_delete,</if>
         </trim>
         <trim prefix="values (" suffix=")" suffixOverrides=",">
                 <if test="id != null">#{id,jdbcType=BIGINT},</if>
                 <if test="userId != null">#{userId,jdbcType=BIGINT},</if>
                 <if test="imageUrl != null">#{imageUrl,jdbcType=VARCHAR},</if>
-                <if test="textResult != null">#{textResult,jdbcType=VARCHAR},</if>
+                <if test="textResult != null">#{textResult,jdbcType=LONGVARCHAR},</if>
+                <if test="auditText != null">#{auditText,jdbcType=LONGVARCHAR},</if>
+                <if test="auditStatus != null">#{auditStatus,jdbcType=INTEGER},</if>
+                <if test="reviewerId != null">#{reviewerId,jdbcType=BIGINT},</if>
+                <if test="auditTime != null">#{auditTime,jdbcType=TIMESTAMP},</if>
+                <if test="isDelete != null">#{isDelete,jdbcType=INTEGER},</if>
         </trim>
     </insert>
     <update id="updateByPrimaryKeySelective" parameterType="com.lrc.ocr.po.OcrResult">
@@ -60,7 +74,22 @@
                     image_url = #{imageUrl,jdbcType=VARCHAR},
                 </if>
                 <if test="textResult != null">
-                    text_result = #{textResult,jdbcType=VARCHAR},
+                    text_result = #{textResult,jdbcType=LONGVARCHAR},
+                </if>
+                <if test="auditText != null">
+                    audit_text = #{auditText,jdbcType=LONGVARCHAR},
+                </if>
+                <if test="auditStatus != null">
+                    audit_status = #{auditStatus,jdbcType=INTEGER},
+                </if>
+                <if test="reviewerId != null">
+                    reviewer_id = #{reviewerId,jdbcType=BIGINT},
+                </if>
+                <if test="auditTime != null">
+                    audit_time = #{auditTime,jdbcType=TIMESTAMP},
+                </if>
+                <if test="isDelete != null">
+                    is_delete = #{isDelete,jdbcType=INTEGER},
                 </if>
         </set>
         where   id = #{id,jdbcType=BIGINT} 
@@ -70,7 +99,12 @@
         set 
             user_id =  #{userId,jdbcType=BIGINT},
             image_url =  #{imageUrl,jdbcType=VARCHAR},
-            text_result =  #{textResult,jdbcType=VARCHAR}
+            text_result =  #{textResult,jdbcType=LONGVARCHAR},
+            audit_text = #{auditText,jdbcType=LONGVARCHAR},
+            audit_status = #{auditStatus,jdbcType=INTEGER},
+            reviewer_id = #{reviewerId,jdbcType=BIGINT},
+            audit_time = #{auditTime,jdbcType=TIMESTAMP},
+            is_delete = #{isDelete,jdbcType=INTEGER}
         where   id = #{id,jdbcType=BIGINT} 
     </update>
 
@@ -82,6 +116,26 @@
         and is_delete = 0
         order by id desc
     </select>
+
+    <select id="selectByIdAndUserId" resultMap="BaseResultMap">
+        select
+        <include refid="Base_Column_List" />
+        from ocr_result
+        where id = #{id,jdbcType=BIGINT}
+        and user_id = #{userId,jdbcType=BIGINT}
+        and is_delete = 0
+    </select>
+
+    <update id="updateAuditInfo" parameterType="com.lrc.ocr.po.OcrResult">
+        update ocr_result
+        set audit_text = #{auditText,jdbcType=LONGVARCHAR},
+            audit_status = #{auditStatus,jdbcType=INTEGER},
+            reviewer_id = #{reviewerId,jdbcType=BIGINT},
+            audit_time = #{auditTime,jdbcType=TIMESTAMP}
+        where id = #{id,jdbcType=BIGINT}
+        and user_id = #{userId,jdbcType=BIGINT}
+        and is_delete = 0
+    </update>
 
     <update id="deleteByIdAndUserId" parameterType="java.util.Map">
         update ocr_result

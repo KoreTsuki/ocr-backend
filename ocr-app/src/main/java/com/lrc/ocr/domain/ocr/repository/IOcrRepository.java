@@ -2,6 +2,7 @@ package com.lrc.ocr.domain.ocr.repository;
 
 
 import com.lrc.ocr.domain.ocr.model.entity.UserEntity;
+import com.lrc.ocr.po.OcrAuditLog;
 import com.lrc.ocr.po.OcrResult;
 
 import java.util.List;
@@ -25,6 +26,14 @@ public interface IOcrRepository {
      * @return OCR识别结果列表
      */
     List<OcrResult> getUserOcrResults(Long userId);
+
+    OcrResult getOcrResult(Long id, Long userId);
+
+    boolean updateAuditResult(Long id, Long userId, Long reviewerId, String auditText, Integer auditStatus);
+
+    void saveAuditLog(Long resultId, Long userId, Long reviewerId, String beforeText, String afterText);
+
+    List<OcrAuditLog> getAuditLogs(Long resultId, Long userId);
     
     /**
      * 删除OCR识别结果

@@ -1,5 +1,7 @@
 package com.lrc.ocr.utils;
 
+import com.lrc.ocr.dao.SysFileRecordMapper;
+import com.lrc.ocr.po.SysFileRecord;
 import org.redisson.api.RBucket;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
@@ -8,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.annotation.Resource;
 import java.io.InputStream;
 import java.security.MessageDigest;
+import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -18,6 +21,9 @@ public class FileDuplicateChecker {
 
     @Resource
     private RedissonClient redissonClient;
+
+    @Resource
+    private SysFileRecordMapper sysFileRecordMapper;
 
     private static final String FILE_HASH_PREFIX = "file:hash:";
 
@@ -40,6 +46,11 @@ public class FileDuplicateChecker {
                 // 如果 Redis 里有，直接把存好的 URL 拿出来返回
                 return bucket.get();
             }
+            SysFileRecord record = sysFileRecordMapper.selectByFileHash(fileHash);
+            if (record != null) {
+                bucket.set(record.getMinioUrl(), EXPIRE_TIME, TimeUnit.MILLISECONDS);
+                return record.getMinioUrl();
+            }
             return null;
         } catch (Exception e) {
             e.printStackTrace();
@@ -58,6 +69,17 @@ public class FileDuplicateChecker {
 
             // 将 URL 存入 Redis，并设置过期时间
             redissonClient.getBucket(redisKey).set(url, EXPIRE_TIME, TimeUnit.MILLISECONDS);
+            if (sysFileRecordMapper.selectByFileHash(fileHash) == null) {
+                SysFileRecord record = new SysFileRecord()
+                        .setFileHash(fileHash)
+                        .setFileName(file.getOriginalFilename())
+                        .setMinioUrl(url)
+                        .setFileSize(file.getSize())
+                        .setContentType(file.getContentType())
+                        .setCreateTime(LocalDateTime.now())
+                        .setUpdateTime(LocalDateTime.now());
+                sysFileRecordMapper.insert(record);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
